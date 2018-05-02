@@ -11,6 +11,7 @@ This repo contains a few tools for monitoring Postgres in production:
   longer than N milliseconds
 * [pglockwaits](#pglockwaits): print counts of events where Postgres blocked
   waiting for a lock
+* [pgsqlio](#pgsqlio): print trace of buffer reads
 
 All of these use Postgres's built-in DTrace probes under the hood, which means:
 
@@ -374,6 +375,45 @@ Output columns correspond to lock types:
 See http://www.postgresql.org/docs/current/static/explicit-locking.html for more
 information about these.
 
+
+## <a name="pgsqlio">pgsqlio</a>: print all accesses to database buffers
+
+Prints all the buffer accesses, so the trace can be analyzed later.
+Note: the trace might be very big.
+Use CTRL-C to stop.
+
+Output columns:
+
+    Timestamp	Timestamp of the operation start
+    Elapsed	Elapsed time for the read
+    ForkNum	Fork number
+    BlockNum	Block number within a file
+    TableSp	Tablespace Oid
+    DataBase	Database Oid
+    Relation	Relation Oid
+    Cached	1 for cached, 0 for non-cached reads
+
+This tool requires privileges to use DTrace on postgres processes on this
+system.  If you see no data but expect some data, check whether your user has
+permissions to trace the postgres processes.
+
+The output might look like
+
+```
+     Timestamp  Elapsed  ForkNum BlockNum  TableSp DataBase Relation Cached
+ 3271836876558     1843        0        1     1663    16385     2661      1
+ 3271836887366     3029        0        0     1663    16385     2605      1
+ 3271837047630     2703        0        3     1663    16385     2662      1
+ 3271837054657     1662        0        2     1663    16385     2662      1
+ 3271837060212     1563        0        1     1663    16385     1259      1
+ 3271838881374    88205        0        0     1663    16385    16604      0
+ 3271840973321     4368        0        0     1663    16385    16604      1
+ 3271842680626     4502        0        0     1663    16385    16604      1
+ 3271846077927     4173        0        0     1663    16385    16604      1
+ 3271851289711     4239        0        3     1663    16385     2673      1
+ 3271851301422     2283        0       41     1663    16385     2673      1
+ 3271851309897     1901        0       55     1663    16385     2608      1
+```
 
 # Implementation notes
 

@@ -1,0 +1,70 @@
+#!/bin/bash
+
+#
+# pgsqlio: report all buffer accesses for PostgreSQL instance
+#
+
+ps_arg0="pgsqlio"
+
+#
+# Some of this boilerplate is common to several tools, but it's duplicated here
+# because it's very useful for these to be standalone scripts.
+#
+ps_tmpfile="/var/tmp/$ps_arg0.$$"
+ps_number_re='^[1-9][0-9]*$'
+ps_synopsis="usage: $ps_arg0"
+
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    cat >&2 <<EOF
+$ps_synopsis
+Prints all the buffer accesses, so the trace can be analyzed later
+Use CTRL-C to stop.
+Output columns:
+    Timestamp	Timestamp of the operation start
+    Elapsed	Elapsed time for the read
+    ForkNum	Fork number
+    BlockNum	Block number within a file
+    TableSp	Tablespace Oid
+    DataBase	Database Oid
+    Relation	Relation Oid
+    Cached	1 for cached, 0 for non-cached reads
+This tool requires privileges to use DTrace on postgres processes on this
+system.  If you see no data but expect some data, check whether your user has
+permissions to trace the postgres processes.
+EOF
+    exit 2
+fi
+
+trap cleanup EXIT
+function cleanup
+{
+    rm -f "$ps_tmpfile"
+}
+
+if ! type dtrace > /dev/null 2>&1; then
+    echo "$ps_arg0: requires dtrace(1M), but not found" >&2
+    exit 1
+fi
+
+cat > "$ps_tmpfile" <<EOF
+#!/usr/sbin/dtrace -s
+#pragma D option quiet
+#pragma D option zdefs
+BEGIN
+{
+    printf("%14s %8s %8s %8s %8s %8s %8s %6s\n",
+        "Timestamp", "Elapsed", "ForkNum", "BlockNum", "TableSp", "DataBase", "Relation", "Cached");
+}
+postgresql*:::buffer-read-start
+{
+    self->start = timestamp;
+}
+postgresql*:::buffer-read-done
+{
+    self->et = timestamp - self->start;
+    printf("%14d %8d %8d %8d %8d %8d %8d %6d\n",
+      self->start, self->et, arg0, arg1, arg2, arg3, arg4, arg7);
+}
+EOF
+
+dtrace -s "$ps_tmpfile"
